@@ -1,0 +1,6 @@
+name: GhastCall
+version: 1.0.0
+main: com.example.ghastcall.GhastCallPlugin
+api-version: '1.21.6'
+author: ChatGPT
+description: Right-click a Happy Ghast while looking at it to call it toward you.
