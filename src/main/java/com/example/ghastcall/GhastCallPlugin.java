@@ -58,7 +58,7 @@ public final class GhastCallPlugin extends JavaPlugin implements Listener {
         // Do not treat using a harness as a call command.
         if (holdingHarness(player)) return;
 
-        RayTraceResult result = player.rayTraceEntities(MAX_DISTANCE, 0.5);
+        RayTraceResult result = player.rayTraceEntities(MAX_DISTANCE, false);
         if (result == null) return;
 
         Entity target = result.getHitEntity();
