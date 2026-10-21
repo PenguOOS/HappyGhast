@@ -27,7 +27,7 @@ public final class GhastCallPlugin extends JavaPlugin implements Listener {
     private final Map<UUID, BukkitRunnable> activeCalls =
             new ConcurrentHashMap<>();
 
-    private static final int MAX_DISTANCE = 32;
+    private static final int MAX_DISTANCE = 16;
 
     @Override
     public void onEnable() {
@@ -58,7 +58,7 @@ public final class GhastCallPlugin extends JavaPlugin implements Listener {
         // Do not treat using a harness as a call command.
         if (holdingHarness(player)) return;
 
-        RayTraceResult result = player.rayTraceEntities(MAX_DISTANCE);
+        RayTraceResult result = player.rayTraceEntities(MAX_DISTANCE, 0.5);
         if (result == null) return;
 
         Entity target = result.getHitEntity();
