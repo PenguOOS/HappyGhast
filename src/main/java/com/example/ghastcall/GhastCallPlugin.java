@@ -11,6 +11,7 @@ import org.bukkit.event.EventHandler;
 import org.bukkit.event.EventPriority;
 import org.bukkit.event.Listener;
 import org.bukkit.event.entity.EntityDamageByEntityEvent;
+import org.bukkit.event.player.PlayerAnimationEvent;
 import org.bukkit.event.player.PlayerInteractEntityEvent;
 import org.bukkit.event.player.PlayerJoinEvent;
 import org.bukkit.inventory.ItemStack;
@@ -25,7 +26,7 @@ import java.util.concurrent.ConcurrentHashMap;
 
 public final class GhastCallPlugin extends JavaPlugin implements Listener {
 
-    private static final double CALL_RANGE = 32.0;
+    private static final double CALL_RANGE = 50.0;
     private static final double NORMAL_REACH = 3.0;
 
     private final Map<UUID, BukkitRunnable> activeCalls =
@@ -39,7 +40,9 @@ public final class GhastCallPlugin extends JavaPlugin implements Listener {
             setInteractionRange(player);
         }
 
-        getLogger().info("GhastCall enabled. Call range: 32 blocks.");
+        getLogger().info(
+                "GhastCall enabled. Call range: 50 blocks."
+        );
     }
 
     @Override
@@ -48,11 +51,6 @@ public final class GhastCallPlugin extends JavaPlugin implements Listener {
         activeCalls.clear();
     }
 
-    /*
-     * The client needs extended interaction range to send a distant
-     * entity-click packet. The event handlers below prevent long-range
-     * attacks and long-range mounting/interactions.
-     */
     private void setInteractionRange(Player player) {
         var attribute =
                 player.getAttribute(Attribute.ENTITY_INTERACTION_RANGE);
@@ -69,13 +67,42 @@ public final class GhastCallPlugin extends JavaPlugin implements Listener {
 
     private boolean holdingHarness(Player player) {
         ItemStack item = player.getInventory().getItemInMainHand();
+
         return item.getType().name().endsWith("HARNESS");
     }
 
+    private boolean isAvailableHappyGhast(Entity entity) {
+        return entity != null
+                && entity.isValid()
+                && entity.getType() == EntityType.HAPPY_GHAST
+                && entity.getPassengers().isEmpty();
+    }
+
     /*
-     * Handle clicks on Happy Ghasts.
-     * Far away: call the ghast and cancel mounting.
-     * Normal reach: preserve vanilla interactions and harness mounting.
+     * Suppress the arm-swing animation when the player is calling
+     * an available Happy Ghast, without a harness in their hand.
+     */
+    @EventHandler(priority = EventPriority.HIGHEST)
+    public void onPlayerAnimation(PlayerAnimationEvent event) {
+        Player player = event.getPlayer();
+
+        if (holdingHarness(player)) return;
+
+        var result = player.rayTraceEntities(CALL_RANGE, false);
+
+        if (result == null) return;
+
+        Entity target = result.getHitEntity();
+
+        if (!isAvailableHappyGhast(target)) return;
+
+        event.setCancelled(true);
+    }
+
+    /*
+     * Distant right-clicks call an available Happy Ghast.
+     * Distant interactions with other entities are cancelled.
+     * At normal range, harness mounting remains available.
      */
     @EventHandler(priority = EventPriority.HIGHEST)
     public void onRightClickEntity(PlayerInteractEntityEvent event) {
@@ -87,45 +114,37 @@ public final class GhastCallPlugin extends JavaPlugin implements Listener {
         double distance = distanceToEntity(player, target);
 
         if (distance > NORMAL_REACH) {
-            // Block all distant entity interactions except calling
-            // a Happy Ghast.
             event.setCancelled(true);
 
-            if (target.getType() == EntityType.HAPPY_GHAST
-                    && distance <= CALL_RANGE) {
+            if (distance <= CALL_RANGE
+                    && isAvailableHappyGhast(target)
+                    && !holdingHarness(player)) {
                 callGhast(player, target);
             }
 
             return;
         }
 
-        // At normal range, preserve normal mounting with a harness.
-        // Empty-hand clicks can still call the Happy Ghast.
-        if (target.getType() == EntityType.HAPPY_GHAST
+        // Preserve normal harness mounting and other close interactions.
+        if (isAvailableHappyGhast(target)
                 && !holdingHarness(player)) {
             callGhast(player, target);
         }
     }
 
     /*
-     * Prevent extended interaction range from allowing long-range
-     * melee attacks against players or other entities.
+     * Prevent the increased interaction attribute from allowing
+     * long-range melee damage.
      */
     @EventHandler(priority = EventPriority.HIGHEST)
     public void onEntityDamage(EntityDamageByEntityEvent event) {
         if (!(event.getDamager() instanceof Player player)) return;
 
-        Entity target = event.getEntity();
-
-        if (distanceToEntity(player, target) > NORMAL_REACH) {
+        if (distanceToEntity(player, event.getEntity()) > NORMAL_REACH) {
             event.setCancelled(true);
         }
     }
 
-    /*
-     * Measure from the player's eyes to the closest point of the
-     * target's bounding box rather than its center.
-     */
     private double distanceToEntity(Player player, Entity target) {
         Location eye = player.getEyeLocation();
         BoundingBox box = target.getBoundingBox();
@@ -141,7 +160,10 @@ public final class GhastCallPlugin extends JavaPlugin implements Listener {
     }
 
     private void callGhast(Player player, Entity ghast) {
-        if (!player.isOnline() || !ghast.isValid()) return;
+        if (!player.isOnline()
+                || !isAvailableHappyGhast(ghast)) {
+            return;
+        }
 
         UUID ghastId = ghast.getUniqueId();
         UUID playerId = player.getUniqueId();
@@ -164,6 +186,7 @@ public final class GhastCallPlugin extends JavaPlugin implements Listener {
                         || currentPlayer == null
                         || !currentGhast.isValid()
                         || !currentPlayer.isOnline()
+                        || !currentGhast.getPassengers().isEmpty()
                         || ticks++ >= 100) {
 
                     activeCalls.remove(ghastId, this);
