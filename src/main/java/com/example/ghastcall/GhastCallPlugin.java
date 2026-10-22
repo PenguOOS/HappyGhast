@@ -88,7 +88,7 @@ public final class GhastCallPlugin extends JavaPlugin implements Listener {
 
         if (holdingHarness(player)) return;
 
-        var result = player.rayTraceEntities(CALL_RANGE, false);
+        var result = player.rayTraceEntities((int) CALL_RANGE, false);
 
         if (result == null) return;
 
